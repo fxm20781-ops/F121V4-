@@ -58,7 +58,7 @@ if uploaded_file is not None:
             # 3. 側邊欄：固定輸入項目
             st.sidebar.header("📋 當前固定輸入/排程條件")
             input_dt = st.sidebar.number_input("DT operation 稼動率", value=0.80, step=0.01)
-            input_c141 = st.sidebar.number_input("C141 operation 稼動率", value=1.20, step=0.01)
+            input_c141 = st.sidebar.number_input("C141 operation 稼动率", value=1.20, step=0.01)
             input_out_temp = st.sidebar.number_input("F121 outlet temperature 出口溫度 (°C)", value=332.0, step=0.1)
 
             # 4. 主畫面：控制限制範圍與下游客層溫度約束
@@ -148,4 +148,47 @@ if uploaded_file is not None:
                 formula_text = f"**NG 消耗量** = {intercept:.4f}\n"
                 for coef, name in zip(coefs, feature_names):
                     display_name = name
-                    for orig, short in
+                    # 優化改寫：避免巢狀迴圈產生的潛在複製錯誤
+                    for orig, short in rename_dict.items():
+                        display_name = display_name.replace(orig, short)
+                    display_name = display_name.replace(" ", " × ")
+                    
+                    if coef >= 0:
+                        formula_text += f" + ({coef:.6f} × {display_name})\n"
+                    else:
+                        formula_text += f" - ({abs(coef):.6f} × {display_name})\n"
+                st.code(formula_text, language="text")
+                st.caption("💡 變數名稱：DT=DT稼動率, C141=C141稼動率, Temp_out=出口溫度, CLO_flow=CLO流量, Oxygen=氧氣含量。")
+                
+                # 8. 自動原因診斷分析
+                st.markdown("---")
+                st.subheader("🔍 CLO 流量卡上下限原因診斷分析")
+                
+                idx_clo_1d = list(feature_names).index('F121 CLO circulation flow')
+                idx_clo_2d = list(feature_names).index('F121 CLO circulation flow^2')
+                
+                coef_1d = coefs[idx_clo_1d]
+                coef_2d = coefs[idx_clo_2d]
+                
+                st.write("在當前擬合的公式中：")
+                st.write(f"* `CLO_flow` 的一次項係數為：`{coef_1d:.4f}`")
+                st.write(f"* `CLO_flow^2` 的二次項係數為：`{coef_2d:.4f}`")
+                
+                if coef_2d < 0:
+                    st.warning("⚠️ **診斷結果：曲線呈現倒烏龜殼（開口向下拋物線）**")
+                    st.write("由於二次方項為負數，模型認為流量開大能持續節能。目前的系統已引入下游客層溫度柔性平衡機制，若數值仍靠向某一端，代表該端點在考量了 C122 溫度安全的前提下，依然是目前加權分數最優的黃金解。")
+                else:
+                    theoretical_min = -coef_1d / (2 * coef_2d)
+                    st.info("ℹ️ **診斷結果：曲線呈現標準山谷（開口向上拋物線）**")
+                    st.write(f"經計算，該拋物線數學上的理論最低能耗點位於流量 = `{theoretical_min:.2f}`。")
+                    if theoretical_min > clo_max:
+                        st.write("因為此理論點超出了安全上限，若有需要，可在安全允許下適度放寬上限值。")
+                    elif theoretical_min < clo_min:
+                        st.write("因為此理論點低於安全下限，若有需要，可在安全允許下適度放寬下限值。")
+                    else:
+                        st.write("理論最優點落在安全區間內。")
+                        
+    except Exception as e:
+        st.error(f"❌ 計算時發生錯誤: {e}")
+else:
+    st.info("💡 請在上方直接上傳您的原始 F121 數據 Excel (.xlsx) 檔案以啟動系統。")
