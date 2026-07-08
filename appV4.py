@@ -76,7 +76,7 @@ if uploaded_file is not None:
                 step=0.01
             )
             input_out_temp = st.sidebar.number_input(
-                f"F121 outlet temperature 出路溫度 (°C)", 
+                f"F121 outlet temperature 出口溫度 (°C)", 
                 value=default_temp, 
                 step=0.1
             )
@@ -162,7 +162,7 @@ if uploaded_file is not None:
                         formula_text += f" - ({abs(coef):.6f} × {display_name})\n"
                 
                 st.code(formula_text, language="text")
-                st.caption("💡 變數名稱：DT=DT稼動率, C141=C141稼動率, Temp_out=出路溫度, CLO_flow=CLO流量, Oxygen=氧氣含量。")
+                st.caption("💡 變數名稱：DT=DT稼動率, C141=C141稼動率, Temp_out=出口溫度, CLO_flow=CLO流量, Oxygen=氧氣含量。")
                     
     except Exception as e:
         st.error(f"❌ 計算時發生錯誤: {e}")
