@@ -6,7 +6,7 @@ from sklearn.linear_model import LinearRegression
 
 # 1. 網頁初始化配置
 st.set_page_config(page_title="F121 製程最佳化控制系統", layout="wide")
-st.title("🏭 F121 天然氣最低消耗控制系統 (自訂初始值版)")
+st.title("🏭 F121 天然氣最低消耗控制系統 (完全自訂初始與邊界版)")
 
 # 2. 檔案上傳元件
 uploaded_file = st.file_uploader("請上傳您的 F121 歷史數據 Excel 檔 (.xlsx)", type=["xlsx"])
@@ -50,48 +50,36 @@ if uploaded_file is not None:
             poly_transformer, model_ng, model_temp = train_and_get_coefs(X, y_ng, y_temp)
             st.success("✅ Excel 數據載入成功，AI 二次公式已擬合完成！")
             
-            # 獲取各欄位歷史極值
-            bounds_config = {
-                'dt_min': float(df_clean['DT operation'].min()), 'dt_max': float(df_clean['DT operation'].max()),
-                'c141_min': float(df_clean['C141 operation'].min()), 'c141_max': float(df_clean['C141 operation'].max()),
-                'out_temp_min': float(df_clean['F121outlet temperature'].min()), 'out_temp_max': float(df_clean['F121outlet temperature'].max()),
-                'clo_min': float(df_clean['F121 CLO circulation flow'].min()), 'clo_max': float(df_clean['F121 CLO circulation flow'].max()),
-                'ox_min': float(df_clean['F121 Oxygen content %'].min()), 'ox_max': float(df_clean['F121 Oxygen content %'].max())
-            }
-            
-            # 3. 【關鍵修改】側邊欄：固定輸入項目，自訂初始預設值為 0.8 與 1.2
+            # 3. 側邊欄：固定輸入項目，全部帶入您指定的初始預設值
             st.sidebar.header("📋 當前固定輸入/排程條件")
             
-            # 溫度依然保留歷史平均值作為預設
-            default_temp = round((bounds_config['out_temp_min'] + bounds_config['out_temp_max']) / 2, 1)
-            
             input_dt = st.sidebar.number_input(
-                f"DT operation 稼動率 ({bounds_config['dt_min']} ~ {bounds_config['dt_max']})", 
-                value=0.80,  # <-- 初始預設值固定為 0.8
+                "DT operation 稼動率", 
+                value=0.80,  # 初始預設值固定為 0.8
                 step=0.01
             )
             input_c141 = st.sidebar.number_input(
-                f"C141 operation 稼動率 ({bounds_config['c141_min']} ~ {bounds_config['c141_max']})", 
-                value=1.20,  # <-- 初始預設值固定為 1.2
+                "C141 operation 稼動率", 
+                value=1.20,  # 初始預設值固定為 1.2
                 step=0.01
             )
             input_out_temp = st.sidebar.number_input(
-                f"F121 outlet temperature 出口溫度 (°C)", 
-                value=default_temp, 
+                "F121 outlet temperature 出口溫度 (°C)", 
+                value=332.0,  # 初始預設值固定為 332
                 step=0.1
             )
 
-            # 4. 主畫面：設定可控參數操作限制
+            # 4. 【關鍵修改】主畫面：設定可控參數操作限制，帶入您指定的 50~56 與 3~7 預設值
             st.header("⚙️ 設定可控參數的操作安全限制範圍 (Safety Bounds)")
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown("### CLO Circulation Flow")
-                clo_min = st.number_input("安全下限", value=bounds_config['clo_min'])
-                clo_max = st.number_input("安全上限", value=bounds_config['clo_max'])
+                clo_min = st.number_input("安全下限", value=50.0, step=0.1, key="clo_min")
+                clo_max = st.number_input("安全上限", value=56.0, step=0.1, key="clo_max")
             with col2:
                 st.markdown("### Oxygen Content %")
-                ox_min = st.number_input("安全下限 (%)", value=bounds_config['ox_min'])
-                ox_max = st.number_input("安全上限 (%)", value=bounds_config['ox_max'])
+                ox_min = st.number_input("安全下限 (%)", value=3.0, step=0.1, key="ox_min")
+                ox_max = st.number_input("安全上限 (%)", value=7.0, step=0.1, key="ox_max")
 
             # 5. 極速 2D 網格最佳化搜尋
             if st.button("🚀 開始計算最低天然氣消耗控制策略", type="primary"):
@@ -163,8 +151,21 @@ if uploaded_file is not None:
                 
                 st.code(formula_text, language="text")
                 st.caption("💡 變數名稱：DT=DT稼動率, C141=C141稼動率, Temp_out=出口溫度, CLO_flow=CLO流量, Oxygen=氧氣含量。")
-                    
-    except Exception as e:
-        st.error(f"❌ 計算時發生錯誤: {e}")
-else:
-    st.info("💡 請在上方直接上傳您的原始 F121 數據 Excel (.xlsx) 檔案以啟動系統。")
+                
+                # 8. 自動分析為什麼 F121 CLO 流量會卡在上限
+                st.markdown("---")
+                st.subheader("🔍 CLO 流量卡上限原因診斷分析")
+                
+                idx_clo_1d = list(feature_names).index('F121 CLO circulation flow')
+                idx_clo_2d = list(feature_names).index('F121 CLO circulation flow^2')
+                
+                coef_1d = coefs[idx_clo_1d]
+                coef_2d = coefs[idx_clo_2d]
+                
+                st.write(f"在當前擬合的公式中：")
+                st.write(f"* `CLO_flow` 的一次項係數為：`{coef_1d:.4f}`")
+                st.write(f"* `CLO_flow^2` 的二次項係數為：`{coef_2d:.4f}`")
+                
+                if coef_2d < 0:
+                    st.warning("⚠️ **診斷結果：曲線呈現倒烏龜殼（開口向下拋物線）**")
+                    st.write(f"因為二次方項係數為負數，模型認為在整個範圍內流量開大能持續顯著節能，所以尋
